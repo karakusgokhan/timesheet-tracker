@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harmony Spiritus — Timesheet Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc}
+input,textarea,button{font-family:inherit}
+input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(99,102,241,0.2);border-color:#818cf8}
+.pulse{animation:pulse 2s cubic-bezier(0.4,0,0.6,1) infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useMemo}=React;
+
+const W_TARGET=12,M_TARGET=48,EMP="Pinar Karaaslan",CO="Harmony Spiritus",TBL="TimeEntries";
+
+// ── Airtable ─────────────────────────────────────────────────────────────────
+function makeClient(tok,bid){
+  const u=`https://api.airtable.com/v0/${bid}/${encodeURIComponent(TBL)}`;
+  const h={Authorization:`Bearer ${tok}`,"Content-Type":"application/json"};
+  return{
+    async getAll(){let a=[],o=null;do{const r=await fetch(o?`${u}?offset=${o}`:u,{headers:h});if(!r.ok)throw new Error(r.status);const d=await r.json();a=[...a,...d.records];o=d.offset}while(o);return a.map(r=>({id:r.id,date:r.fields.Date||"",clockIn:r.fields.ClockIn||"",clockOut:r.fields.ClockOut||"",task:r.fields.Task||"",employee:r.fields.Employee||EMP}))},
+    async add(e){const r=await fetch(u,{method:"POST",headers:h,body:JSON.stringify({records:[{fields:{Employee:e.employee||EMP,Date:e.date,ClockIn:e.clockIn,ClockOut:e.clockOut||"",Task:e.task||""}}]})});if(!r.ok)throw new Error(r.status);const d=await r.json();const x=d.records[0];return{id:x.id,date:x.fields.Date,clockIn:x.fields.ClockIn,clockOut:x.fields.ClockOut||"",task:x.fields.Task||"",employee:x.fields.Employee||EMP}},
+    async upd(id,f){const r=await fetch(u,{method:"PATCH",headers:h,body:JSON.stringify({records:[{id,fields:f}]})});if(!r.ok)throw new Error(r.status);const d=await r.json();const x=d.records[0];return{id:x.id,date:x.fields.Date,clockIn:x.fields.ClockIn,clockOut:x.fields.ClockOut||"",task:x.fields.Task||"",employee:x.fields.Employee||EMP}},
+    async del(id){const r=await fetch(`${u}?records[]=${id}`,{method:"DELETE",headers:h});if(!r.ok)throw new Error(r.status)},
+  };
+}
+
+// ── Demo Data ────────────────────────────────────────────────────────────────
+const DEMO=[
+  {id:"d1",date:"2026-01-16",clockIn:"11:00",clockOut:"16:30",task:"",employee:EMP},
+  {id:"d2",date:"2026-01-12",clockIn:"14:30",clockOut:"15:30",task:"",employee:EMP},
+  {id:"d3",date:"2026-01-19",clockIn:"09:45",clockOut:"13:15",task:"",employee:EMP},
+  {id:"d4",date:"2026-01-20",clockIn:"15:00",clockOut:"16:00",task:"",employee:EMP},
+  {id:"d5",date:"2026-01-21",clockIn:"15:30",clockOut:"17:30",task:"",employee:EMP},
+  {id:"d6",date:"2026-01-22",clockIn:"11:15",clockOut:"12:30",task:"",employee:EMP},
+  {id:"d7",date:"2026-01-22",clockIn:"18:45",clockOut:"20:00",task:"",employee:EMP},
+  {id:"d8",date:"2026-01-23",clockIn:"12:00",clockOut:"14:15",task:"",employee:EMP},
+  {id:"d9",date:"2026-01-26",clockIn:"11:30",clockOut:"15:30",task:"",employee:EMP},
+  {id:"d10",date:"2026-01-27",clockIn:"09:45",clockOut:"10:45",task:"",employee:EMP},
+  {id:"d11",date:"2026-01-27",clockIn:"15:15",clockOut:"16:30",task:"",employee:EMP},
+  {id:"d12",date:"2026-01-28",clockIn:"08:45",clockOut:"10:15",task:"",employee:EMP},
+  {id:"d13",date:"2026-01-29",clockIn:"09:15",clockOut:"17:00",task:"",employee:EMP},
+  {id:"d14",date:"2026-01-30",clockIn:"15:30",clockOut:"16:15",task:"",employee:EMP},
+  {id:"d15",date:"2026-02-02",clockIn:"11:30",clockOut:"15:30",task:"",employee:EMP},
+  {id:"d16",date:"2026-02-03",clockIn:"09:30",clockOut:"10:30",task:"",employee:EMP},
+  {id:"d17",date:"2026-02-03",clockIn:"13:30",clockOut:"17:30",task:"",employee:EMP},
+  {id:"d18",date:"2026-02-05",clockIn:"09:30",clockOut:"12:30",task:"",employee:EMP},
+  {id:"d19",date:"2026-02-05",clockIn:"13:30",clockOut:"15:00",task:"",employee:EMP},
+  {id:"d20",date:"2026-02-06",clockIn:"09:00",clockOut:"14:15",task:"",employee:EMP},
+];
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+function hrs(a,b){if(!a||!b)return 0;const[h1,m1]=a.split(":").map(Number);const[h2,m2]=b.split(":").map(Number);return(h2*60+m2-(h1*60+m1))/60}
+function fh(h){const hr=Math.floor(Math.abs(h)),mn=Math.round((Math.abs(h)-hr)*60),s=h<0?"\u2212":"";return hr===0?`${s}${mn}m`:mn===0?`${s}${hr}h`:`${s}${hr}h ${mn}m`}
+function ft(t){return t?t.split(":").slice(0,2).join(":"):""}
+function amsT(){return new Date().toLocaleString("en-GB",{timeZone:"Europe/Amsterdam",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}
+function amsD(){return new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Amsterdam"})}
+function amsTS(){return new Date().toLocaleString("en-GB",{timeZone:"Europe/Amsterdam",hour:"2-digit",minute:"2-digit",hour12:false})}
+function wk(d){if(!d)return 0;const dt=new Date(d+"T12:00:00"),s=new Date(dt.getFullYear(),0,1);return Math.ceil(((dt-s)/864e5+s.getDay()+1)/7)}
+function mo(d){return d?new Date(d+"T12:00:00").getMonth()+1:0}
+function fd(d){return d?new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"}):""}
+function vc(v){if(Math.abs(v)<=.5)return{bg:"#ecfdf5",tx:"#047857",bd:"#a7f3d0",br:"#10b981"};return v>0?{bg:"#fef2f2",tx:"#dc2626",bd:"#fecaca",br:"#ef4444"}:{bg:"#eff6ff",tx:"#2563eb",bd:"#bfdbfe",br:"#3b82f6"}}
+function en(e){return{...e,week:wk(e.date),month:mo(e.date)}}
+
+// ── SVG Icons ────────────────────────────────────────────────────────────────
+const I=({n,s=18,c="currentColor",cl=""})=>{const p={fill:"none",stroke:c,strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};const icons={
+  clock:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  play:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+  sq:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><rect x="3" y="3" width="18" height="18" rx="2"/></svg>,
+  cal:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  bar:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>,
+  list:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+  alert:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><path d="m10.29 3.86-8.47 14.14a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  gear:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  dn:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><polyline points="6 9 12 15 18 9"/></svg>,
+  up:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><polyline points="18 15 12 9 6 15"/></svg>,
+  plus:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  trash:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+  wifi:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
+  noWifi:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
+  ok:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+  xc:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,
+  save:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  ref:<svg width={s} height={s} viewBox="0 0 24 24" {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+  load:<svg width={s} height={s} viewBox="0 0 24 24" {...p} className="spin"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>,
+};return icons[n]||null};
+
+// ── CSS Bar Chart ────────────────────────────────────────────────────────────
+function BarChart({data,target}){
+  const max=Math.max(...data.map(d=>d.hours),target*1.3);
+  return(
+    <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
+      <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Weekly Hours Overview</h3>
+      <div style={{position:"relative",paddingLeft:36,paddingBottom:28}}>
+        {/* Y-axis labels */}
+        {[0,6,12,18,24].map(v=>(
+          <div key={v} style={{position:"absolute",left:0,bottom:28+((v/max)*200),fontSize:11,color:"#94a3b8",width:30,textAlign:"right"}}>{v}h</div>
+        ))}
+        {/* Target line */}
+        <div style={{position:"absolute",left:36,right:0,bottom:28+((target/max)*200),borderTop:"2px dashed #94a3b8",zIndex:1}}>
+          <span style={{position:"absolute",right:0,top:-16,fontSize:10,color:"#94a3b8"}}>Target ({target}h)</span>
+        </div>
+        {/* Bars */}
+        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:200,borderBottom:"1px solid #e2e8f0"}}>
+          {data.map((d,i)=>{
+            const pct=(d.hours/max)*100;
+            const c=vc(d.hours-target);
+            return(
+              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{fontSize:11,fontWeight:600,color:c.tx,marginBottom:4}}>{fh(d.hours)}</div>
+                <div style={{width:"100%",maxWidth:50,height:`${pct}%`,backgroundColor:c.br,borderRadius:"6px 6px 0 0",transition:"height 0.5s",minHeight:2}}/>
+              </div>
+            );
+          })}
+        </div>
+        {/* X-axis labels */}
+        <div style={{display:"flex",gap:8,marginTop:6}}>
+          {data.map((d,i)=><div key={i} style={{flex:1,textAlign:"center",fontSize:12,color:"#64748b"}}>{d.label}</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+function Sidebar({v,setV,conn}){
+  const items=[{id:"dashboard",icon:"bar",l:"Dashboard"},{id:"timelog",icon:"list",l:"Time Log"},{id:"clockin",icon:"clock",l:"Clock In/Out"},{id:"settings",icon:"gear",l:"Settings"}];
+  return(
+    <div style={{width:256,minHeight:"100vh",backgroundColor:"#0f172a",color:"white",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:24,borderBottom:"1px solid #334155"}}>
+        <h1 style={{fontSize:18,fontWeight:700}}>{CO}</h1>
+        <p style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Timesheet Tracker</p>
+      </div>
+      <nav style={{flex:1,padding:16}}>
+        {items.map(it=>(
+          <button key={it.id} onClick={()=>setV(it.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:14,fontWeight:500,marginBottom:4,backgroundColor:v===it.id?"#334155":"transparent",color:v===it.id?"white":"#cbd5e1"}}>
+            <I n={it.icon} s={18}/>{it.l}
+            {it.id==="settings"&&<span style={{marginLeft:"auto"}}><I n={conn?"wifi":"noWifi"} s={12} c={conn?"#34d399":"#fbbf24"}/></span>}
+          </button>
+        ))}
+      </nav>
+      <div style={{padding:16,borderTop:"1px solid #334155",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:32,height:32,borderRadius:"50%",backgroundColor:"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>PK</div>
+        <div><p style={{fontSize:14,fontWeight:500}}>{EMP}</p><p style={{fontSize:12,color:"#94a3b8"}}>Amsterdam (CET)</p></div>
+      </div>
+    </div>
+  );
+}
+
+function Hdr({title,sub}){
+  const[t,setT]=useState(amsT());
+  useEffect(()=>{const iv=setInterval(()=>setT(amsT()),1000);return()=>clearInterval(iv)},[]);
+  return(
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:32}}>
+      <div><h2 style={{fontSize:24,fontWeight:700,color:"#1e293b"}}>{title}</h2>{sub&&<p style={{fontSize:14,color:"#64748b",marginTop:4}}>{sub}</p>}</div>
+      <div style={{textAlign:"right"}}><p style={{fontSize:24,fontFamily:"monospace",fontWeight:600,color:"#334155"}}>{t}</p><p style={{fontSize:12,color:"#94a3b8"}}>Amsterdam (CET)</p></div>
+    </div>
+  );
+}
+
+function Ban({conn}){
+  if(conn)return null;
+  return(<div style={{marginBottom:24,padding:"12px 16px",borderRadius:8,backgroundColor:"#fffbeb",border:"1px solid #fde68a",display:"flex",alignItems:"center",gap:8}}><I n="noWifi" s={16} c="#d97706"/><span style={{fontSize:14,color:"#92400e",fontWeight:500}}>Demo mode — connect Airtable in Settings to save data</span></div>);
+}
+
+function Stat({label,value,sub,bg="#fff",bd="#e2e8f0",icon}){
+  return(<div style={{borderRadius:12,border:`1px solid ${bd}`,padding:20,backgroundColor:bg}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <span style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:1,color:"#94a3b8"}}>{label}</span>
+      {icon&&<I n={icon} s={16} c="#94a3b8"/>}
+    </div>
+    <p style={{fontSize:24,fontWeight:700,color:"#1e293b"}}>{value}</p>
+    {sub&&<p style={{fontSize:12,color:"#64748b",marginTop:4}}>{sub}</p>}
+  </div>);
+}
+
+function Prog({cur,tgt,label}){
+  const pct=Math.min((cur/tgt)*100,100),over=cur>tgt;
+  return(<div style={{marginBottom:16}}>
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:14,marginBottom:4}}>
+      <span style={{color:"#475569",fontWeight:500}}>{label}</span>
+      <span style={{fontWeight:600,color:over?"#dc2626":"#334155"}}>{fh(cur)} / {fh(tgt)}</span>
+    </div>
+    <div style={{height:12,backgroundColor:"#f1f5f9",borderRadius:999,overflow:"hidden"}}>
+      <div style={{height:"100%",borderRadius:999,backgroundColor:over?"#f87171":"#6366f1",width:`${Math.min(pct+(over?((cur-tgt)/tgt)*100:0),100)}%`,transition:"width .5s"}}/>
+    </div>
+  </div>);
+}
+
+function Alerts({wd}){
+  const a=wd.filter(w=>Math.abs(w.hours-W_TARGET)>.5);
+  if(!a.length)return(<div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><I n="ok" s={32} c="#34d399"/><p style={{fontSize:14,color:"#64748b",marginTop:8}}>All weeks within target</p></div>);
+  return(<div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
+    <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 12px"}}>Variance Alerts</h3>
+    {a.map(w=>{const v=w.hours-W_TARGET,c=vc(v);return(
+      <div key={w.week} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:8,border:`1px solid ${c.bd}`,backgroundColor:c.bg,marginBottom:8}}>
+        <I n="alert" s={16} c={c.tx}/><span style={{fontSize:14,fontWeight:500,color:c.tx}}>{w.label}: {fh(w.hours)} ({v>0?"+":""}{fh(v)} vs target)</span>
+      </div>
+    )})}
+  </div>);
+}
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+function Dash({entries,conn}){
+  const ee=useMemo(()=>entries.map(en),[entries]);
+  const wd=useMemo(()=>{
+    const w={};ee.forEach(e=>{if(!e.clockOut)return;if(!w[e.week])w[e.week]={week:e.week,hours:0,month:e.month};w[e.week].hours+=hrs(e.clockIn,e.clockOut)});
+    return Object.values(w).sort((a,b)=>a.week-b.week).map(x=>({...x,label:`W${x.week}`}));
+  },[ee]);
+  const cur=wd.length?wd[wd.length-1]:{hours:0,week:0};
+  const jan=wd.filter(w=>w.month===1).reduce((s,w)=>s+w.hours,0);
+  const feb=wd.filter(w=>w.month===2).reduce((s,w)=>s+w.hours,0);
+  const tot=ee.reduce((s,e)=>s+(e.clockOut?hrs(e.clockIn,e.clockOut):0),0);
+  const cc=cur.hours>W_TARGET+.5?"#fef2f2":cur.hours<W_TARGET-.5?"#eff6ff":"#ecfdf5";
+  const cb=cur.hours>W_TARGET+.5?"#fecaca":cur.hours<W_TARGET-.5?"#bfdbfe":"#a7f3d0";
+  return(<div>
+    <Hdr title="Dashboard" sub={`${EMP} \u00b7 12h/week agreement`}/>
+    <Ban conn={conn}/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
+      <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${W_TARGET}h`} bg={cc} bd={cb} icon="clock"/>
+      <Stat label="January" value={fh(jan)} sub="3 weeks" icon="cal"/>
+      <Stat label="February" value={fh(feb)} sub="In progress" bg="#eef2ff" bd="#c7d2fe" icon="cal"/>
+      <Stat label="All Time" value={fh(tot)} sub={`${ee.filter(e=>e.clockOut).length} entries`} icon="bar"/>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:24}}>
+      <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
+        <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Weekly Progress</h3>
+        <Prog cur={cur.hours} tgt={W_TARGET} label={`Week ${cur.week||"\u2014"}`}/>
+        <div style={{marginTop:16}}>{wd.slice(-4).reverse().map(w=>{const v=w.hours-W_TARGET,c=vc(v);return(
+          <div key={w.week} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14,marginBottom:8}}>
+            <span style={{color:"#475569"}}>W{w.week}</span>
+            <span style={{color:"#334155",fontWeight:500}}>{fh(w.hours)}</span>
+            <span style={{fontWeight:600,color:c.tx,backgroundColor:c.bg,padding:"2px 8px",borderRadius:4,fontSize:12}}>{v>0?"+":""}{fh(v)}</span>
+          </div>
+        )})}</div>
+      </div>
+      <Alerts wd={wd}/>
+    </div>
+    <BarChart data={wd} target={W_TARGET}/>
+  </div>);
+}
+
+// ── Time Log ─────────────────────────────────────────────────────────────────
+function TLog({entries,onDel,conn,loading}){
+  const[exp,setExp]=useState(null);
+  const ee=useMemo(()=>entries.map(en),[entries]);
+  const gr=useMemo(()=>{
+    const w={};ee.forEach(e=>{if(!w[e.week])w[e.week]={week:e.week,entries:[],total:0};w[e.week].entries.push(e);if(e.clockOut)w[e.week].total+=hrs(e.clockIn,e.clockOut)});
+    return Object.values(w).sort((a,b)=>b.week-a.week);
+  },[ee]);
+  return(<div>
+    <Hdr title="Time Log" sub="All recorded time entries"/>
+    <Ban conn={conn}/>
+    {loading?<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 0"}}><I n="load" s={24} c="#94a3b8"/><span style={{color:"#64748b",marginLeft:8}}>Loading...</span></div>
+    :gr.map(g=>{const v=g.total-W_TARGET,c=vc(v),o=exp===g.week;return(
+      <div key={g.week} style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",marginBottom:12,overflow:"hidden"}}>
+        <button onClick={()=>setExp(o?null:g.week)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 24px",border:"none",backgroundColor:"transparent",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:16}}><span style={{fontSize:14,fontWeight:700,color:"#334155"}}>Week {g.week}</span><span style={{fontSize:14,color:"#64748b"}}>{g.entries.length} entries</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:16}}>
+            <span style={{fontSize:14,fontWeight:600,color:"#334155"}}>{fh(g.total)}</span>
+            <span style={{fontSize:12,fontWeight:600,padding:"4px 8px",borderRadius:4,backgroundColor:c.bg,color:c.tx,border:`1px solid ${c.bd}`}}>{v>0?"+":""}{fh(v)}</span>
+            <I n={o?"up":"dn"} s={16} c="#94a3b8"/>
+          </div>
+        </button>
+        {o&&<div style={{borderTop:"1px solid #f1f5f9"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr style={{backgroundColor:"#f8fafc"}}>
+              {["Date","In","Out","Hours","Task",""].map((h,i)=><th key={i} style={{padding:"10px 16px",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,textAlign:i===0||i===4?"left":"center"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{g.entries.sort((a,b)=>a.date.localeCompare(b.date)||a.clockIn.localeCompare(b.clockIn)).map(e=>(
+              <tr key={e.id} style={{borderTop:"1px solid #f8fafc"}}>
+                <td style={{padding:"10px 16px",fontSize:14,color:"#334155"}}>{fd(e.date)}</td>
+                <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{ft(e.clockIn)}</td>
+                <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{e.clockOut?ft(e.clockOut):<span style={{color:"#6366f1"}} className="pulse">Active</span>}</td>
+                <td style={{padding:"10px 16px",fontSize:14,fontWeight:600,color:"#334155",textAlign:"center"}}>{e.clockOut?fh(hrs(e.clockIn,e.clockOut)):"\u2014"}</td>
+                <td style={{padding:"10px 16px",fontSize:14,color:"#64748b",fontStyle:"italic",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.task||"No description"}</td>
+                <td style={{padding:"10px 16px",textAlign:"center"}}><button onClick={()=>onDel(e.id)} style={{border:"none",background:"none",cursor:"pointer",color:"#cbd5e1"}}><I n="trash" s={14}/></button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>}
+      </div>
+    )})}
+  </div>);
+}
+
+// ── Clock In/Out ─────────────────────────────────────────────────────────────
+function CIO({entries,onCI,onCO,onMA,conn}){
+  const[on,setOn]=useState(false),[ses,setSes]=useState(null),[task,setTask]=useState(""),[el,setEl]=useState("00:00:00");
+  const[man,setMan]=useState(false),[mD,setMD]=useState(amsD()),[mI,setMI]=useState("09:00"),[mO,setMO]=useState("17:00"),[mT,setMT]=useState(""),[sav,setSav]=useState(false);
+
+  useEffect(()=>{
+    if(!on||!ses)return;
+    const iv=setInterval(()=>{
+      const a=new Date().toLocaleString("en-GB",{timeZone:"Europe/Amsterdam",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+      const[h,m,s]=a.split(":").map(Number);const[iH,iM]=ses.clockIn.split(":").map(Number);
+      const d=Math.max(0,(h*3600+m*60+s)-(iH*3600+iM*60));
+      setEl(`${String(Math.floor(d/3600)).padStart(2,"0")}:${String(Math.floor((d%3600)/60)).padStart(2,"0")}:${String(d%60).padStart(2,"0")}`);
+    },1000);return()=>clearInterval(iv);
+  },[on,ses]);
+
+  async function doCI(){setSav(true);try{const s=await onCI({date:amsD(),clockIn:amsTS()});setSes(s);setOn(true);setTask("")}catch(e){alert(e.message)}setSav(false)}
+  async function doCO(){if(!task.trim()){alert("Please add a task description.");return}setSav(true);try{await onCO(ses.id,{ClockOut:amsTS(),Task:task.trim()});setOn(false);setSes(null);setTask("");setEl("00:00:00")}catch(e){alert(e.message)}setSav(false)}
+  async function doMA(){if(!mD||!mI||!mO)return;setSav(true);try{await onMA({date:mD,clockIn:mI,clockOut:mO,task:mT.trim()});setMT("")}catch(e){alert(e.message)}setSav(false)}
+
+  return(<div>
+    <Hdr title="Clock In/Out" sub="Track your working hours"/>
+    <Ban conn={conn}/>
+    <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:32,marginBottom:24,textAlign:"center"}}>
+      {!on?<>
+        <div style={{width:80,height:80,margin:"0 auto 16px",borderRadius:"50%",backgroundColor:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center"}}><I n="play" s={32} c="#6366f1"/></div>
+        <p style={{color:"#64748b",marginBottom:24}}>Ready to start tracking</p>
+        <button onClick={doCI} disabled={sav} style={{padding:"12px 32px",backgroundColor:"#4f46e5",color:"white",borderRadius:12,border:"none",fontWeight:600,fontSize:14,cursor:"pointer",opacity:sav?.5:1}}>{sav&&<I n="load" s={16}/>} Clock In</button>
+      </>:<>
+        <div style={{width:80,height:80,margin:"0 auto 16px",borderRadius:"50%",backgroundColor:"#fef2f2",display:"flex",alignItems:"center",justifyContent:"center"}} className="pulse"><I n="sq" s={28} c="#ef4444"/></div>
+        <p style={{fontSize:36,fontFamily:"monospace",fontWeight:700,color:"#1e293b",marginBottom:4}}>{el}</p>
+        <p style={{fontSize:14,color:"#94a3b8",marginBottom:24}}>Clocked in at {ses?.clockIn} · {fd(ses?.date)}</p>
+        <div style={{maxWidth:400,margin:"0 auto 24px",textAlign:"left"}}>
+          <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>What are you working on? *</label>
+          <textarea value={task} onChange={e=>setTask(e.target.value)} placeholder="Brief description..." rows={2} style={{width:"100%",padding:"12px 16px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,resize:"none"}}/>
+        </div>
+        <button onClick={doCO} disabled={sav} style={{padding:"12px 32px",backgroundColor:"#ef4444",color:"white",borderRadius:12,border:"none",fontWeight:600,fontSize:14,cursor:"pointer",opacity:sav?.5:1}}>{sav&&<I n="load" s={16}/>} Clock Out</button>
+      </>}
+    </div>
+    <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
+      <button onClick={()=>setMan(!man)} style={{display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,color:"#475569",border:"none",background:"none",cursor:"pointer"}}><I n="plus" s={16}/> Add Manual Entry <I n={man?"up":"dn"} s={14}/></button>
+      {man&&<div style={{marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:12,alignItems:"end"}}>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",marginBottom:4}}>Date</label><input type="date" value={mD} onChange={e=>setMD(e.target.value)} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8}}/></div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",marginBottom:4}}>Clock In</label><input type="time" value={mI} onChange={e=>setMI(e.target.value)} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8}}/></div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",marginBottom:4}}>Clock Out</label><input type="time" value={mO} onChange={e=>setMO(e.target.value)} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8}}/></div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",marginBottom:4}}>Task</label><input type="text" value={mT} onChange={e=>setMT(e.target.value)} placeholder="Description..." style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8}}/></div>
+        <button onClick={doMA} disabled={sav} style={{padding:"8px 16px",backgroundColor:"#0f172a",color:"white",borderRadius:8,border:"none",fontSize:14,fontWeight:500,cursor:"pointer",opacity:sav?.5:1}}>Add</button>
+      </div>}
+    </div>
+  </div>);
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+function Cfg({config,setConfig,onTest,cs}){
+  const[tok,setTok]=useState(config.apiToken),[bid,setBid]=useState(config.baseId),[t,setT]=useState(false);
+  async function test(){setT(true);await onTest(tok,bid);setT(false)}
+  return(<div>
+    <Hdr title="Settings" sub="Connect your Airtable backend"/>
+    <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24,marginBottom:24,maxWidth:640}}>
+      <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Airtable Connection</h3>
+      <div style={{marginBottom:16}}>
+        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Personal Access Token</label>
+        <input type="password" value={tok} onChange={e=>setTok(e.target.value)} placeholder="pat_xxxxxxx..." style={{width:"100%",padding:"12px 16px",border:"1px solid #e2e8f0",borderRadius:8,fontFamily:"monospace",fontSize:14}}/>
+        <p style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Get yours at airtable.com/create/tokens</p>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Base ID</label>
+        <input type="text" value={bid} onChange={e=>setBid(e.target.value)} placeholder="appXXXXXXXXXXXXXX" style={{width:"100%",padding:"12px 16px",border:"1px solid #e2e8f0",borderRadius:8,fontFamily:"monospace",fontSize:14}}/>
+        <p style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Find this in your Airtable base URL</p>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:12,paddingTop:8}}>
+        <button onClick={test} disabled={t||!tok||!bid} style={{padding:"8px 16px",backgroundColor:"#f1f5f9",color:"#334155",borderRadius:8,border:"none",fontSize:14,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:8,opacity:(!tok||!bid)?.5:1}}>{t?<I n="load" s={14}/>:<I n="ref" s={14}/>} Test</button>
+        <button onClick={()=>setConfig({apiToken:tok,baseId:bid})} style={{padding:"8px 16px",backgroundColor:"#4f46e5",color:"white",borderRadius:8,border:"none",fontSize:14,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}><I n="save" s={14}/> Save & Connect</button>
+        {cs==="success"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:14,color:"#059669",fontWeight:500}}><I n="ok" s={14} c="#059669"/> Connected</span>}
+        {cs==="error"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:14,color:"#dc2626",fontWeight:500}}><I n="xc" s={14} c="#dc2626"/> Failed</span>}
+      </div>
+    </div>
+    <div style={{backgroundColor:"#f8fafc",borderRadius:12,border:"1px solid #e2e8f0",padding:24,maxWidth:640}}>
+      <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 12px"}}>Quick Setup</h3>
+      <div style={{fontSize:14,color:"#475569",lineHeight:1.8}}>
+        <p><strong>Base ID:</strong> <code style={{backgroundColor:"#fff",padding:"2px 8px",borderRadius:4,border:"1px solid #e2e8f0",fontFamily:"monospace",fontSize:12}}>appZxJ13dMcUKh8Yf</code></p>
+        <p>Paste your token and Base ID above, then click <strong>Save & Connect</strong>.</p>
+      </div>
+    </div>
+  </div>);
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+function App(){
+  const[v,setV]=useState("dashboard"),[entries,setEntries]=useState(DEMO),[conn,setConn]=useState(false),[ld,setLd]=useState(false),[cs,setCs]=useState(null),[cfg,setCfg]=useState({apiToken:"",baseId:""}),[cl,setCl]=useState(null);
+
+  useEffect(()=>{
+    if(cfg.apiToken&&cfg.baseId){
+      const c=makeClient(cfg.apiToken,cfg.baseId);setCl(c);setLd(true);
+      c.getAll().then(r=>{setEntries(r);setConn(true);setCs("success")}).catch(()=>{setConn(false);setCs("error");setEntries(DEMO)}).finally(()=>setLd(false));
+    }
+  },[cfg]);
+
+  async function onTest(tok,bid){try{await makeClient(tok,bid).getAll();setCs("success")}catch{setCs("error")}}
+  async function onDel(id){if(conn&&cl&&!id.startsWith("d")){try{await cl.del(id)}catch(e){alert(e.message);return}}setEntries(p=>p.filter(e=>e.id!==id))}
+  async function onCI(data){if(conn&&cl){const r=await cl.add({employee:EMP,...data,clockOut:"",task:""});setEntries(p=>[...p,r]);return r}const e={id:`l${Date.now()}`,...data,clockOut:"",task:"",employee:EMP};setEntries(p=>[...p,e]);return e}
+  async function onCO(id,f){if(conn&&cl&&!id.startsWith("l")&&!id.startsWith("d")){const u=await cl.upd(id,f);setEntries(p=>p.map(e=>e.id===id?u:e))}else{setEntries(p=>p.map(e=>e.id===id?{...e,clockOut:f.ClockOut,task:f.Task}:e))}}
+  async function onMA(data){if(conn&&cl){const r=await cl.add({employee:EMP,...data});setEntries(p=>[...p,r])}else{setEntries(p=>[...p,{id:`l${Date.now()}`,...data,employee:EMP}])}}
+
+  return(
+    <div style={{display:"flex",minHeight:"100vh",backgroundColor:"#f8fafc"}}>
+      <Sidebar v={v} setV={setV} conn={conn}/>
+      <main style={{flex:1,padding:32,overflow:"auto"}}>
+        {v==="dashboard"&&<Dash entries={entries} conn={conn}/>}
+        {v==="timelog"&&<TLog entries={entries} onDel={onDel} conn={conn} loading={ld}/>}
+        {v==="clockin"&&<CIO entries={entries} onCI={onCI} onCO={onCO} onMA={onMA} conn={conn}/>}
+        {v==="settings"&&<Cfg config={cfg} setConfig={setCfg} onTest={onTest} cs={cs}/>}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
