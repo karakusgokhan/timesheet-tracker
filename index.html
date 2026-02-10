@@ -384,7 +384,10 @@ function Cfg({config,setConfig,onTest,cs}){
 
 // ── App ──────────────────────────────────────────────────────────────────────
 function App(){
-  const[v,setV]=useState("dashboard"),[entries,setEntries]=useState(DEMO),[conn,setConn]=useState(false),[ld,setLd]=useState(false),[cs,setCs]=useState(null),[cfg,setCfg]=useState({apiToken:"",baseId:""}),[cl,setCl]=useState(null);
+function loadCfg(){try{const s=localStorage.getItem("hs_ts_cfg");return s?JSON.parse(s):{apiToken:"",baseId:""}}catch{return{apiToken:"",baseId:""}}}
+  function saveCfg(c){setCfgState(c);try{localStorage.setItem("hs_ts_cfg",JSON.stringify(c))}catch{}}
+  const[v,setV]=useState("dashboard"),[entries,setEntries]=useState(DEMO),[conn,setConn]=useState(false),[ld,setLd]=useState(false),[cs,setCs]=useState(null),[cfg,setCfgState]=useState(loadCfg),[cl,setCl]=useState(null);
+  const setCfg=saveCfg;,[cfg,setCfg]=useState({apiToken:"",baseId:""}),[cl,setCl]=useState(null);
 
   useEffect(()=>{
     if(cfg.apiToken&&cfg.baseId){
