@@ -298,8 +298,48 @@ function TLog({entries,onDel,conn,loading}){
 
 // ── Clock In/Out ─────────────────────────────────────────────────────────────
 function CIO({entries,onCI,onCO,onMA,conn}){
+  // Load saved session from localStorage
+  function loadSession(){
+    try{
+      const s=localStorage.getItem("hs_active_session");
+      return s?JSON.parse(s):null;
+    }catch{
+      return null;
+    }
+  }
+  
+  // Save session to localStorage
+  function saveSession(session){
+    try{
+      if(session){
+        localStorage.setItem("hs_active_session",JSON.stringify(session));
+      }else{
+        localStorage.removeItem("hs_active_session");
+      }
+    }catch{}
+  }
+
   const[on,setOn]=useState(false),[ses,setSes]=useState(null),[task,setTask]=useState(""),[el,setEl]=useState("00:00:00");
   const[man,setMan]=useState(false),[mD,setMD]=useState(amsD()),[mI,setMI]=useState("09:00"),[mO,setMO]=useState("17:00"),[mT,setMT]=useState(""),[sav,setSav]=useState(false);
+
+  // Load saved session on mount
+  useEffect(()=>{
+    const saved=loadSession();
+    if(saved){
+      setSes(saved);
+      setOn(true);
+      setTask(saved.task||"");
+    }
+  },[]);
+
+  // Save session whenever it changes
+  useEffect(()=>{
+    if(on&&ses){
+      saveSession({...ses,task});
+    }else{
+      saveSession(null);
+    }
+  },[on,ses,task]);
 
   useEffect(()=>{
     if(!on||!ses)return;
@@ -311,9 +351,60 @@ function CIO({entries,onCI,onCO,onMA,conn}){
     },1000);return()=>clearInterval(iv);
   },[on,ses]);
 
-  async function doCI(){setSav(true);try{const s=await onCI({date:amsD(),clockIn:amsTS()});setSes(s);setOn(true);setTask("")}catch(e){alert(e.message)}setSav(false)}
-  async function doCO(){if(!task.trim()){alert("Please add a task description.");return}setSav(true);try{await onCO(ses.id,{ClockOut:amsTS(),Task:task.trim()});setOn(false);setSes(null);setTask("");setEl("00:00:00")}catch(e){alert(e.message)}setSav(false)}
-  async function doMA(){if(!mD||!mI||!mO)return;setSav(true);try{await onMA({date:mD,clockIn:mI,clockOut:mO,task:mT.trim()});setMT("")}catch(e){alert(e.message)}setSav(false)}
+  async function doCI(){
+    // Check if there's already an active session
+    const existing=loadSession();
+    if(existing){
+      alert("You already have an active timer running!");
+      setSes(existing);
+      setOn(true);
+      setTask(existing.task||"");
+      return;
+    }
+    
+    setSav(true);
+    try{
+      const s=await onCI({date:amsD(),clockIn:amsTS()});
+      setSes(s);
+      setOn(true);
+      setTask("");
+      saveSession(s);
+    }catch(e){
+      alert(e.message);
+    }
+    setSav(false);
+  }
+  
+  async function doCO(){
+    if(!task.trim()){
+      alert("Please add a task description.");
+      return;
+    }
+    setSav(true);
+    try{
+      await onCO(ses.id,{ClockOut:amsTS(),Task:task.trim()});
+      setOn(false);
+      setSes(null);
+      setTask("");
+      setEl("00:00:00");
+      saveSession(null);
+    }catch(e){
+      alert(e.message);
+    }
+    setSav(false);
+  }
+  
+  async function doMA(){
+    if(!mD||!mI||!mO)return;
+    setSav(true);
+    try{
+      await onMA({date:mD,clockIn:mI,clockOut:mO,task:mT.trim()});
+      setMT("");
+    }catch(e){
+      alert(e.message);
+    }
+    setSav(false);
+  }
 
   return(<div>
     <Hdr title="Clock In/Out" sub="Track your working hours"/>
