@@ -68,7 +68,14 @@ function ft(t){return t?t.split(":").slice(0,2).join(":"):""}
 function amsT(){return new Date().toLocaleString("en-GB",{timeZone:"Europe/Amsterdam",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}
 function amsD(){return new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Amsterdam"})}
 function amsTS(){return new Date().toLocaleString("en-GB",{timeZone:"Europe/Amsterdam",hour:"2-digit",minute:"2-digit",hour12:false})}
-function wk(d){if(!d)return 0;const dt=new Date(d+"T12:00:00"),s=new Date(dt.getFullYear(),0,1);return Math.ceil(((dt-s)/864e5+s.getDay()+1)/7)}
+function wk(d){
+  if(!d)return 0;
+  const dt=new Date(d+"T12:00:00");
+  const dayNum = dt.getDay() || 7;
+  dt.setDate(dt.getDate() + 4 - dayNum);
+  const yearStart = new Date(dt.getFullYear(),0,1);
+  return Math.ceil((((dt - yearStart) / 864e5) + 1) / 7);
+}
 function mo(d){return d?new Date(d+"T12:00:00").getMonth()+1:0}
 function fd(d){return d?new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"}):""}
 function vc(v){if(Math.abs(v)<=.5)return{bg:"#ecfdf5",tx:"#047857",bd:"#a7f3d0",br:"#10b981"};return v>0?{bg:"#fef2f2",tx:"#dc2626",bd:"#fecaca",br:"#ef4444"}:{bg:"#eff6ff",tx:"#2563eb",bd:"#bfdbfe",br:"#3b82f6"}}
