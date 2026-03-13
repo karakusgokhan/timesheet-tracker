@@ -24,6 +24,13 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(99,102,241,0.2
 const{useState,useEffect,useMemo}=React;
 
 const W_TARGET=12,M_TARGET=48,EMP="Pinar Karaaslan",CO="Harmony Spiritus",TBL="TimeEntries";
+  // Add this NEW function right here:
+function getWeekTarget(dateStr){
+  if(!dateStr)return W_TARGET;
+  const date=new Date(dateStr+"T12:00:00");
+  const marchStart=new Date("2026-03-01T00:00:00");
+  return date>=marchStart?16:12;
+}
 
 // ── Airtable ─────────────────────────────────────────────────────────────────
 function makeClient(tok,bid){
@@ -78,8 +85,12 @@ function wk(d){
 }
 function mo(d){return d?new Date(d+"T12:00:00").getMonth()+1:0}
 function fd(d){return d?new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"}):""}
-function vc(v){if(Math.abs(v)<=.5)return{bg:"#ecfdf5",tx:"#047857",bd:"#a7f3d0",br:"#10b981"};return v>0?{bg:"#fef2f2",tx:"#dc2626",bd:"#fecaca",br:"#ef4444"}:{bg:"#eff6ff",tx:"#2563eb",bd:"#bfdbfe",br:"#3b82f6"}}
-function en(e){return{...e,week:wk(e.date),month:mo(e.date)}}
+function vc(v,target){
+  if(!target)target=W_TARGET;
+  if(Math.abs(v)<=.5)return{bg:"#ecfdf5",tx:"#047857",bd:"#a7f3d0",br:"#10b981"};
+  return v>0?{bg:"#fef2f2",tx:"#dc2626",bd:"#fecaca",br:"#ef4444"}:{bg:"#eff6ff",tx:"#2563eb",bd:"#bfdbfe",br:"#3b82f6"};
+}
+  function en(e){return{...e,week:wk(e.date),month:mo(e.date)}}
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 const I=({n,s=18,c="currentColor",cl=""})=>{const p={fill:"none",stroke:c,strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};const icons={
@@ -207,15 +218,22 @@ function Prog({cur,tgt,label}){
 }
 
 function Alerts({wd}){
-  const a=wd.filter(w=>Math.abs(w.hours-W_TARGET)>.5);
+  const a=wd.filter(w=>Math.abs(w.hours-w.target)>.5);
   if(!a.length)return(<div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><I n="ok" s={32} c="#34d399"/><p style={{fontSize:14,color:"#64748b",marginTop:8}}>All weeks within target</p></div>);
   return(<div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
     <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 12px"}}>Variance Alerts</h3>
-    {a.map(w=>{const v=w.hours-W_TARGET,c=vc(v);return(
-      <div key={w.week} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:8,border:`1px solid ${c.bd}`,backgroundColor:c.bg,marginBottom:8}}>
-        <I n="alert" s={16} c={c.tx}/><span style={{fontSize:14,fontWeight:500,color:c.tx}}>{w.label}: {fh(w.hours)} ({v>0?"+":""}{fh(v)} vs target)</span>
-      </div>
-    )})}
+    {a.map(w=>{
+      const v=w.hours-w.target;
+      const c=vc(v,w.target);
+      return(
+        <div key={w.week} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:8,border:`1px solid ${c.bd}`,backgroundColor:c.bg,marginBottom:8}}>
+          <I n="alert" s={16} c={c.tx}/>
+          <span style={{fontSize:14,fontWeight:500,color:c.tx}}>
+            {w.label}: {fh(w.hours)} ({v>0?"+":""}{fh(v)} vs {w.target}h target)
+          </span>
+        </div>
+      );
+    })}
   </div>);
 }
 
@@ -223,83 +241,158 @@ function Alerts({wd}){
 function Dash({entries,conn}){
   const ee=useMemo(()=>entries.map(en),[entries]);
   const wd=useMemo(()=>{
-    const w={};ee.forEach(e=>{if(!e.clockOut)return;if(!w[e.week])w[e.week]={week:e.week,hours:0,month:e.month};w[e.week].hours+=hrs(e.clockIn,e.clockOut)});
-    return Object.values(w).sort((a,b)=>a.week-b.week).map(x=>({...x,label:`W${x.week}`}));
+    const w={};
+    ee.forEach(e=>{
+      if(!e.clockOut)return;
+      if(!w[e.week])w[e.week]={week:e.week,hours:0,month:e.month,firstDate:e.date};
+      w[e.week].hours+=hrs(e.clockIn,e.clockOut);
+      if(e.date<w[e.week].firstDate)w[e.week].firstDate=e.date;
+    });
+    return Object.values(w).sort((a,b)=>a.week-b.week).map(x=>({...x,label:`W${x.week}`,target:getWeekTarget(x.firstDate)}));
   },[ee]);
-  const cur=wd.length?wd[wd.length-1]:{hours:0,week:0};
+  
+  const cur=wd.length?wd[wd.length-1]:{hours:0,week:0,target:getWeekTarget(amsD())};
   const jan=wd.filter(w=>w.month===1).reduce((s,w)=>s+w.hours,0);
   const feb=wd.filter(w=>w.month===2).reduce((s,w)=>s+w.hours,0);
+  const mar=wd.filter(w=>w.month===3).reduce((s,w)=>s+w.hours,0);
   const tot=ee.reduce((s,e)=>s+(e.clockOut?hrs(e.clockIn,e.clockOut):0),0);
-  const cc=cur.hours>W_TARGET+.5?"#fef2f2":cur.hours<W_TARGET-.5?"#eff6ff":"#ecfdf5";
-  const cb=cur.hours>W_TARGET+.5?"#fecaca":cur.hours<W_TARGET-.5?"#bfdbfe":"#a7f3d0";
+  
+  const curVariance=cur.hours-cur.target;
+  const cc=curVariance>0.5?"#fef2f2":curVariance<-0.5?"#eff6ff":"#ecfdf5";
+  const cb=curVariance>0.5?"#fecaca":curVariance<-0.5?"#bfdbfe":"#a7f3d0";
+  
   return(<div>
-    <Hdr title="Dashboard" sub={`${EMP} \u00b7 12h/week agreement`}/>
+    <Hdr title="Dashboard" sub={`${EMP} · 12h/week (Jan-Feb), 16h/week (Mar+)`}/>
     <Ban conn={conn}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
-      <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${W_TARGET}h`} bg={cc} bd={cb} icon="clock"/>
-      <Stat label="January" value={fh(jan)} sub="3 weeks" icon="cal"/>
-      <Stat label="February" value={fh(feb)} sub="In progress" bg="#eef2ff" bd="#c7d2fe" icon="cal"/>
-      <Stat label="All Time" value={fh(tot)} sub={`${ee.filter(e=>e.clockOut).length} entries`} icon="bar"/>
+      <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${cur.target}h`} bg={cc} bd={cb} icon="clock"/>
+      <Stat label="January" value={fh(jan)} sub="12h/week" icon="cal"/>
+      <Stat label="February" value={fh(feb)} sub="12h/week" bg="#eef2ff" bd="#c7d2fe" icon="cal"/>
+      <Stat label="March" value={fh(mar)} sub="16h/week" bg="#fef2f2" bd="#fecaca" icon="cal"/>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:24}}>
       <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
         <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Weekly Progress</h3>
-        <Prog cur={cur.hours} tgt={W_TARGET} label={`Week ${cur.week||"\u2014"}`}/>
-        <div style={{marginTop:16}}>{wd.slice(-4).reverse().map(w=>{const v=w.hours-W_TARGET,c=vc(v);return(
-          <div key={w.week} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14,marginBottom:8}}>
-            <span style={{color:"#475569"}}>W{w.week}</span>
-            <span style={{color:"#334155",fontWeight:500}}>{fh(w.hours)}</span>
-            <span style={{fontWeight:600,color:c.tx,backgroundColor:c.bg,padding:"2px 8px",borderRadius:4,fontSize:12}}>{v>0?"+":""}{fh(v)}</span>
-          </div>
-        )})}</div>
+        <Prog cur={cur.hours} tgt={cur.target} label={`Week ${cur.week||"—"}`}/>
+        <div style={{marginTop:16}}>{wd.slice(-4).reverse().map(w=>{
+          const v=w.hours-w.target;
+          const c=vc(v,w.target);
+          return(
+            <div key={w.week} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14,marginBottom:8}}>
+              <span style={{color:"#475569"}}>W{w.week}</span>
+              <span style={{color:"#334155",fontWeight:500}}>{fh(w.hours)}</span>
+              <span style={{fontWeight:600,color:c.tx,backgroundColor:c.bg,padding:"2px 8px",borderRadius:4,fontSize:12}}>{v>0?"+":""}{fh(v)}</span>
+            </div>
+          );
+        })}</div>
       </div>
       <Alerts wd={wd}/>
     </div>
-    <BarChart data={wd} target={W_TARGET}/>
+    <BarChart data={wd} target={cur.target}/>
   </div>);
 }
-
 // ── Time Log ─────────────────────────────────────────────────────────────────
 function TLog({entries,onDel,conn,loading}){
   const[exp,setExp]=useState(null);
+  const[view,setView]=useState("week");
+  
   const ee=useMemo(()=>entries.map(en),[entries]);
-  const gr=useMemo(()=>{
-    const w={};ee.forEach(e=>{if(!w[e.week])w[e.week]={week:e.week,entries:[],total:0};w[e.week].entries.push(e);if(e.clockOut)w[e.week].total+=hrs(e.clockIn,e.clockOut)});
-    return Object.values(w).sort((a,b)=>b.week-a.week);
+  
+  const grWeek=useMemo(()=>{
+    const w={};
+    ee.forEach(e=>{
+      if(!w[e.week])w[e.week]={week:e.week,entries:[],total:0,firstDate:e.date};
+      w[e.week].entries.push(e);
+      if(e.date<w[e.week].firstDate)w[e.week].firstDate=e.date;
+      if(e.clockOut)w[e.week].total+=hrs(e.clockIn,e.clockOut);
+    });
+    return Object.values(w).sort((a,b)=>b.week-a.week).map(x=>({...x,target:getWeekTarget(x.firstDate)}));
   },[ee]);
+  
+  const grMonth=useMemo(()=>{
+    const m={};
+    ee.forEach(e=>{
+      const monthKey=e.date.substring(0,7);
+      if(!m[monthKey])m[monthKey]={month:monthKey,entries:[],total:0};
+      m[monthKey].entries.push(e);
+      if(e.clockOut)m[monthKey].total+=hrs(e.clockIn,e.clockOut);
+    });
+    return Object.values(m).sort((a,b)=>b.month.localeCompare(a.month));
+  },[ee]);
+  
+  const gr=view==="week"?grWeek:grMonth;
+  
+  function getMonthName(monthKey){
+    const date=new Date(monthKey+"-01");
+    return date.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  }
+  
+  function getMonthTarget(monthKey){
+    const entries=grMonth.find(m=>m.month===monthKey)?.entries||[];
+    const weekSet=new Map();
+    entries.forEach(e=>{
+      const wk=e.week;
+      if(!weekSet.has(wk))weekSet.set(wk,e.date);
+    });
+    let total=0;
+    weekSet.forEach(firstDate=>{
+      total+=getWeekTarget(firstDate);
+    });
+    return total;
+  }
+  
   return(<div>
     <Hdr title="Time Log" sub="All recorded time entries"/>
     <Ban conn={conn}/>
+    
+    <div style={{marginBottom:16,display:"flex",gap:8}}>
+      <button onClick={()=>setView("week")} style={{padding:"8px 16px",backgroundColor:view==="week"?"#4f46e5":"#f1f5f9",color:view==="week"?"white":"#64748b",border:"none",borderRadius:8,fontSize:14,fontWeight:500,cursor:"pointer"}}>Group by Week</button>
+      <button onClick={()=>setView("month")} style={{padding:"8px 16px",backgroundColor:view==="month"?"#4f46e5":"#f1f5f9",color:view==="month"?"white":"#64748b",border:"none",borderRadius:8,fontSize:14,fontWeight:500,cursor:"pointer"}}>Group by Month</button>
+    </div>
+    
     {loading?<div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 0"}}><I n="load" s={24} c="#94a3b8"/><span style={{color:"#64748b",marginLeft:8}}>Loading...</span></div>
-    :gr.map(g=>{const v=g.total-W_TARGET,c=vc(v),o=exp===g.week;return(
-      <div key={g.week} style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",marginBottom:12,overflow:"hidden"}}>
-        <button onClick={()=>setExp(o?null:g.week)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 24px",border:"none",backgroundColor:"transparent",cursor:"pointer"}}>
-          <div style={{display:"flex",alignItems:"center",gap:16}}><span style={{fontSize:14,fontWeight:700,color:"#334155"}}>Week {g.week}</span><span style={{fontSize:14,color:"#64748b"}}>{g.entries.length} entries</span></div>
-          <div style={{display:"flex",alignItems:"center",gap:16}}>
-            <span style={{fontSize:14,fontWeight:600,color:"#334155"}}>{fh(g.total)}</span>
-            <span style={{fontSize:12,fontWeight:600,padding:"4px 8px",borderRadius:4,backgroundColor:c.bg,color:c.tx,border:`1px solid ${c.bd}`}}>{v>0?"+":""}{fh(v)}</span>
-            <I n={o?"up":"dn"} s={16} c="#94a3b8"/>
-          </div>
-        </button>
-        {o&&<div style={{borderTop:"1px solid #f1f5f9"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{backgroundColor:"#f8fafc"}}>
-              {["Date","In","Out","Hours","Task",""].map((h,i)=><th key={i} style={{padding:"10px 16px",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,textAlign:i===0||i===4?"left":"center"}}>{h}</th>)}
-            </tr></thead>
-            <tbody>{g.entries.sort((a,b)=>a.date.localeCompare(b.date)||a.clockIn.localeCompare(b.clockIn)).map(e=>(
-              <tr key={e.id} style={{borderTop:"1px solid #f8fafc"}}>
-                <td style={{padding:"10px 16px",fontSize:14,color:"#334155"}}>{fd(e.date)}</td>
-                <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{ft(e.clockIn)}</td>
-                <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{e.clockOut?ft(e.clockOut):<span style={{color:"#6366f1"}} className="pulse">Active</span>}</td>
-                <td style={{padding:"10px 16px",fontSize:14,fontWeight:600,color:"#334155",textAlign:"center"}}>{e.clockOut?fh(hrs(e.clockIn,e.clockOut)):"\u2014"}</td>
-                <td style={{padding:"10px 16px",fontSize:14,color:"#64748b",fontStyle:"italic",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.task||"No description"}</td>
-                <td style={{padding:"10px 16px",textAlign:"center"}}><button onClick={()=>onDel(e.id)} style={{border:"none",background:"none",cursor:"pointer",color:"#cbd5e1"}}><I n="trash" s={14}/></button></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>}
-      </div>
-    )})}
+    :gr.map(g=>{
+      const isWeek=view==="week";
+      const key=isWeek?g.week:g.month;
+      const label=isWeek?`Week ${g.week}`:getMonthName(g.month);
+      const target=isWeek?g.target:getMonthTarget(g.month);
+      const v=g.total-target;
+      const c=vc(v,target);
+      const o=exp===key;
+      
+      return(
+        <div key={key} style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",marginBottom:12,overflow:"hidden"}}>
+          <button onClick={()=>setExp(o?null:key)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 24px",border:"none",backgroundColor:"transparent",cursor:"pointer"}}>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <span style={{fontSize:14,fontWeight:700,color:"#334155"}}>{label}</span>
+              <span style={{fontSize:14,color:"#64748b"}}>{g.entries.length} entries</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <span style={{fontSize:14,fontWeight:600,color:"#334155"}}>{fh(g.total)}</span>
+              <span style={{fontSize:12,fontWeight:600,padding:"4px 8px",borderRadius:4,backgroundColor:c.bg,color:c.tx,border:`1px solid ${c.bd}`}}>{v>0?"+":""}{fh(v)}</span>
+              <I n={o?"up":"dn"} s={16} c="#94a3b8"/>
+            </div>
+          </button>
+          {o&&<div style={{borderTop:"1px solid #f1f5f9"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr style={{backgroundColor:"#f8fafc"}}>
+                {["Date","In","Out","Hours","Task",""].map((h,i)=><th key={i} style={{padding:"10px 16px",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:1,textAlign:i===0||i===4?"left":"center"}}>{h}</th>)}
+              </tr></thead>
+              <tbody>{g.entries.sort((a,b)=>a.date.localeCompare(b.date)||a.clockIn.localeCompare(b.clockIn)).map(e=>(
+                <tr key={e.id} style={{borderTop:"1px solid #f8fafc"}}>
+                  <td style={{padding:"10px 16px",fontSize:14,color:"#334155"}}>{fd(e.date)}</td>
+                  <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{ft(e.clockIn)}</td>
+                  <td style={{padding:"10px 16px",fontSize:14,fontFamily:"monospace",color:"#475569",textAlign:"center"}}>{e.clockOut?ft(e.clockOut):<span style={{color:"#6366f1"}} className="pulse">Active</span>}</td>
+                  <td style={{padding:"10px 16px",fontSize:14,fontWeight:600,color:"#334155",textAlign:"center"}}>{e.clockOut?fh(hrs(e.clockIn,e.clockOut)):"—"}</td>
+                  <td style={{padding:"10px 16px",fontSize:14,color:"#64748b",fontStyle:"italic",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.task||"No description"}</td>
+                  <td style={{padding:"10px 16px",textAlign:"center"}}><button onClick={()=>onDel(e.id)} style={{border:"none",background:"none",cursor:"pointer",color:"#cbd5e1"}}><I n="trash" s={14}/></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>}
+        </div>
+      );
+    })}
   </div>);
 }
 
