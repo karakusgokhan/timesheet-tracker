@@ -262,7 +262,7 @@ function Dash({entries,conn}){
   const cb=curVariance>0.5?"#fecaca":curVariance<-0.5?"#bfdbfe":"#a7f3d0";
   
   return(<div>
-    <Hdr title="Dashboard" sub={`${EMP} · 12h/week (Jan-Feb), 16h/week (Mar+)`}/>
+    <Hdr title="Dashboard" sub={`${EMP} · 12h/week (Jan-Mar), 16h/week (Apr+)`}/>
     <Ban conn={conn}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
       <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${cur.target}h`} bg={cc} bd={cb} icon="clock"/>
