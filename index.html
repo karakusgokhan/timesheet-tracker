@@ -28,8 +28,8 @@ const W_TARGET=12,M_TARGET=48,EMP="Pinar Karaaslan",CO="Harmony Spiritus",TBL="T
 function getWeekTarget(dateStr){
   if(!dateStr)return W_TARGET;
   const date=new Date(dateStr+"T12:00:00");
-  const marchStart=new Date("2026-03-01T00:00:00");
-  return date>=marchStart?16:12;
+  const aprilStart=new Date("2026-04-01T00:00:00");
+  return date>=aprilStart?16:12;
 }
 
 // ── Airtable ─────────────────────────────────────────────────────────────────
