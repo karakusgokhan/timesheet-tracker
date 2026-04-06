@@ -239,6 +239,7 @@ function Alerts({wd}){
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 // ── Updated Dashboard with Cumulative Hours ─────────────────────────────────
+// ── Updated Dashboard with Weekly AND Monthly Cumulative Hours ─────────────
 function Dash({entries,conn}){
   const ee=useMemo(()=>entries.map(en),[entries]);
   const wd=useMemo(()=>{
@@ -261,10 +262,32 @@ function Dash({entries,conn}){
     });
   },[ee]);
   
+  // Monthly calculations with targets and cumulative
+  const monthlyData=useMemo(()=>{
+    const months=[
+      {id:1,name:"January",hours:0,target:0},
+      {id:2,name:"February",hours:0,target:0},
+      {id:3,name:"March",hours:0,target:0}
+    ];
+    
+    wd.forEach(w=>{
+      const month=months.find(m=>m.id===w.month);
+      if(month){
+        month.hours+=w.hours;
+        month.target+=w.target;
+      }
+    });
+    
+    return months.map(m=>({
+      ...m,
+      variance:m.hours-m.target
+    }));
+  },[wd]);
+  
   const cur=wd.length?wd[wd.length-1]:{hours:0,week:0,target:getWeekTarget(amsD()),cumulative:0};
-  const jan=wd.filter(w=>w.month===1).reduce((s,w)=>s+w.hours,0);
-  const feb=wd.filter(w=>w.month===2).reduce((s,w)=>s+w.hours,0);
-  const mar=wd.filter(w=>w.month===3).reduce((s,w)=>s+w.hours,0);
+  const jan=monthlyData[0];
+  const feb=monthlyData[1];
+  const mar=monthlyData[2];
   const tot=ee.reduce((s,e)=>s+(e.clockOut?hrs(e.clockIn,e.clockOut):0),0);
   
   const curVariance=cur.hours-cur.target;
@@ -280,9 +303,28 @@ function Dash({entries,conn}){
     <Ban conn={conn}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}}>
       <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${cur.target}h`} bg={cc} bd={cb} icon="clock"/>
-      <Stat label="January" value={fh(jan)} sub="12h/week" icon="cal"/>
-      <Stat label="February" value={fh(feb)} sub="12h/week" bg="#eef2ff" bd="#c7d2fe" icon="cal"/>
-      <Stat label="March" value={fh(mar)} sub="12h/week" bg="#fef2f2" bd="#fecaca" icon="cal"/>
+      <Stat 
+        label="January" 
+        value={fh(jan.hours)} 
+        sub={`12h/week (${jan.variance>=0?"+":"""}${fh(jan.variance)})`} 
+        icon="cal"
+      />
+      <Stat 
+        label="February" 
+        value={fh(feb.hours)} 
+        sub={`12h/week (${feb.variance>=0?"+":"""}${fh(feb.variance)})`} 
+        bg="#eef2ff" 
+        bd="#c7d2fe" 
+        icon="cal"
+      />
+      <Stat 
+        label="March" 
+        value={fh(mar.hours)} 
+        sub={`12h/week (${mar.variance>=0?"+":"""}${fh(mar.variance)})`} 
+        bg="#fef2f2" 
+        bd="#fecaca" 
+        icon="cal"
+      />
       <Stat 
         label="Cumulative Balance" 
         value={cur.cumulative>=0?`+${fh(cur.cumulative)}`:fh(cur.cumulative)} 
