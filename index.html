@@ -238,6 +238,7 @@ function Alerts({wd}){
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
+// ── Updated Dashboard with Cumulative Hours ─────────────────────────────────
 function Dash({entries,conn}){
   const ee=useMemo(()=>entries.map(en),[entries]);
   const wd=useMemo(()=>{
@@ -248,10 +249,19 @@ function Dash({entries,conn}){
       w[e.week].hours+=hrs(e.clockIn,e.clockOut);
       if(e.date<w[e.week].firstDate)w[e.week].firstDate=e.date;
     });
-    return Object.values(w).sort((a,b)=>a.week-b.week).map(x=>({...x,label:`W${x.week}`,target:getWeekTarget(x.firstDate)}));
+    
+    // Sort by week and calculate cumulative variance
+    const sorted=Object.values(w).sort((a,b)=>a.week-b.week);
+    let cumulative=0;
+    return sorted.map(x=>{
+      const target=getWeekTarget(x.firstDate);
+      const variance=x.hours-target;
+      cumulative+=variance;
+      return{...x,label:`W${x.week}`,target,variance,cumulative};
+    });
   },[ee]);
   
-  const cur=wd.length?wd[wd.length-1]:{hours:0,week:0,target:getWeekTarget(amsD())};
+  const cur=wd.length?wd[wd.length-1]:{hours:0,week:0,target:getWeekTarget(amsD()),cumulative:0};
   const jan=wd.filter(w=>w.month===1).reduce((s,w)=>s+w.hours,0);
   const feb=wd.filter(w=>w.month===2).reduce((s,w)=>s+w.hours,0);
   const mar=wd.filter(w=>w.month===3).reduce((s,w)=>s+w.hours,0);
@@ -261,27 +271,45 @@ function Dash({entries,conn}){
   const cc=curVariance>0.5?"#fef2f2":curVariance<-0.5?"#eff6ff":"#ecfdf5";
   const cb=curVariance>0.5?"#fecaca":curVariance<-0.5?"#bfdbfe":"#a7f3d0";
   
+  // Cumulative card colors
+  const cumulativeColor=cur.cumulative>0.5?"#dcfce7":cur.cumulative<-0.5?"#fee2e2":"#f1f5f9";
+  const cumulativeBorder=cur.cumulative>0.5?"#86efac":cur.cumulative<-0.5?"#fca5a5":"#e2e8f0";
+  
   return(<div>
     <Hdr title="Dashboard" sub={`${EMP} · 12h/week (Jan-Mar), 16h/week (Apr+)`}/>
     <Ban conn={conn}/>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}}>
       <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${cur.target}h`} bg={cc} bd={cb} icon="clock"/>
       <Stat label="January" value={fh(jan)} sub="12h/week" icon="cal"/>
       <Stat label="February" value={fh(feb)} sub="12h/week" bg="#eef2ff" bd="#c7d2fe" icon="cal"/>
-      <Stat label="March" value={fh(mar)} sub="16h/week" bg="#fef2f2" bd="#fecaca" icon="cal"/>
+      <Stat label="March" value={fh(mar)} sub="12h/week" bg="#fef2f2" bd="#fecaca" icon="cal"/>
+      <Stat 
+        label="Cumulative Balance" 
+        value={cur.cumulative>=0?`+${fh(cur.cumulative)}`:fh(cur.cumulative)} 
+        sub={cur.cumulative>=0?"Extra hours":"Hours deficit"} 
+        bg={cumulativeColor} 
+        bd={cumulativeBorder} 
+        icon="bar"
+      />
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:24}}>
       <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
         <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Weekly Progress</h3>
         <Prog cur={cur.hours} tgt={cur.target} label={`Week ${cur.week||"—"}`}/>
         <div style={{marginTop:16}}>{wd.slice(-4).reverse().map(w=>{
-          const v=w.hours-w.target;
-          const c=vc(v,w.target);
+          const c=vc(w.variance,w.target);
           return(
             <div key={w.week} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:14,marginBottom:8}}>
               <span style={{color:"#475569"}}>W{w.week}</span>
               <span style={{color:"#334155",fontWeight:500}}>{fh(w.hours)}</span>
-              <span style={{fontWeight:600,color:c.tx,backgroundColor:c.bg,padding:"2px 8px",borderRadius:4,fontSize:12}}>{v>0?"+":""}{fh(v)}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:600,color:c.tx,backgroundColor:c.bg,padding:"2px 8px",borderRadius:4,fontSize:12}}>
+                  {w.variance>0?"+":""}{fh(w.variance)}
+                </span>
+                <span style={{fontSize:11,color:"#94a3b8",fontWeight:500}}>
+                  (∑ {w.cumulative>=0?"+":""}{fh(w.cumulative)})
+                </span>
+              </div>
             </div>
           );
         })}</div>
