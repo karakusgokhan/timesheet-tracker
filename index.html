@@ -24,7 +24,7 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(99,102,241,0.2
 const{useState,useEffect,useMemo}=React;
 
 const W_TARGET=12,M_TARGET=48,EMP="Pinar Karaaslan",CO="Harmony Spiritus",TBL="TimeEntries";
-  // Add this NEW function right here:
+
 function getWeekTarget(dateStr){
   if(!dateStr)return W_TARGET;
   const date=new Date(dateStr+"T12:00:00");
@@ -90,7 +90,7 @@ function vc(v,target){
   if(Math.abs(v)<=.5)return{bg:"#ecfdf5",tx:"#047857",bd:"#a7f3d0",br:"#10b981"};
   return v>0?{bg:"#fef2f2",tx:"#dc2626",bd:"#fecaca",br:"#ef4444"}:{bg:"#eff6ff",tx:"#2563eb",bd:"#bfdbfe",br:"#3b82f6"};
 }
-  function en(e){return{...e,week:wk(e.date),month:mo(e.date)}}
+function en(e){return{...e,week:wk(e.date),month:mo(e.date)}}
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 const I=({n,s=18,c="currentColor",cl=""})=>{const p={fill:"none",stroke:c,strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"};const icons={
@@ -122,15 +122,12 @@ function BarChart({data,target}){
     <div style={{backgroundColor:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24}}>
       <h3 style={{fontSize:14,fontWeight:600,color:"#334155",margin:"0 0 16px"}}>Weekly Hours Overview</h3>
       <div style={{position:"relative",paddingLeft:36,paddingBottom:28}}>
-        {/* Y-axis labels */}
         {[0,6,12,18,24].map(v=>(
           <div key={v} style={{position:"absolute",left:0,bottom:28+((v/max)*200),fontSize:11,color:"#94a3b8",width:30,textAlign:"right"}}>{v}h</div>
         ))}
-        {/* Target line */}
         <div style={{position:"absolute",left:36,right:0,bottom:28+((target/max)*200),borderTop:"2px dashed #94a3b8",zIndex:1}}>
           <span style={{position:"absolute",right:0,top:-16,fontSize:10,color:"#94a3b8"}}>Target ({target}h)</span>
         </div>
-        {/* Bars */}
         <div style={{display:"flex",alignItems:"flex-end",gap:8,height:200,borderBottom:"1px solid #e2e8f0"}}>
           {data.map((d,i)=>{
             const pct=(d.hours/max)*100;
@@ -143,7 +140,6 @@ function BarChart({data,target}){
             );
           })}
         </div>
-        {/* X-axis labels */}
         <div style={{display:"flex",gap:8,marginTop:6}}>
           {data.map((d,i)=><div key={i} style={{flex:1,textAlign:"center",fontSize:12,color:"#64748b"}}>{d.label}</div>)}
         </div>
@@ -238,8 +234,6 @@ function Alerts({wd}){
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
-// ── Updated Dashboard with Cumulative Hours ─────────────────────────────────
-// ── Updated Dashboard with Weekly AND Monthly Cumulative Hours ─────────────
 function Dash({entries,conn}){
   const ee=useMemo(()=>entries.map(en),[entries]);
   const wd=useMemo(()=>{
@@ -251,7 +245,6 @@ function Dash({entries,conn}){
       if(e.date<w[e.week].firstDate)w[e.week].firstDate=e.date;
     });
     
-    // Sort by week and calculate cumulative variance
     const sorted=Object.values(w).sort((a,b)=>a.week-b.week);
     let cumulative=0;
     return sorted.map(x=>{
@@ -262,7 +255,6 @@ function Dash({entries,conn}){
     });
   },[ee]);
   
-  // Monthly calculations with targets and cumulative
   const monthlyData=useMemo(()=>{
     const months=[
       {id:1,name:"January",hours:0,target:0},
@@ -294,25 +286,21 @@ function Dash({entries,conn}){
   const cc=curVariance>0.5?"#fef2f2":curVariance<-0.5?"#eff6ff":"#ecfdf5";
   const cb=curVariance>0.5?"#fecaca":curVariance<-0.5?"#bfdbfe":"#a7f3d0";
   
-  // Cumulative card colors
-  const cumulativeColor=cur.cumulative>0.5?"#dcfce7":cur.cumulative<-0.5?"#fee2e2":"#f1f5f9";
-  const cumulativeBorder=cur.cumulative>0.5?"#86efac":cur.cumulative<-0.5?"#fca5a5":"#e2e8f0";
-  
   return(<div>
     <Hdr title="Dashboard" sub={`${EMP} · 12h/week (Jan-Mar), 16h/week (Apr+)`}/>
     <Ban conn={conn}/>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
       <Stat label="This Week" value={fh(cur.hours)} sub={`Target: ${cur.target}h`} bg={cc} bd={cb} icon="clock"/>
       <Stat 
         label="January" 
         value={fh(jan.hours)} 
-        sub={`12h/week (${jan.variance>=0?"+":"""}${fh(jan.variance)})`} 
+        sub={`12h/week (${jan.variance>=0?"+":""}${fh(jan.variance)})`} 
         icon="cal"
       />
       <Stat 
         label="February" 
         value={fh(feb.hours)} 
-        sub={`12h/week (${feb.variance>=0?"+":"""}${fh(feb.variance)})`} 
+        sub={`12h/week (${feb.variance>=0?"+":""}${fh(feb.variance)})`} 
         bg="#eef2ff" 
         bd="#c7d2fe" 
         icon="cal"
@@ -320,18 +308,10 @@ function Dash({entries,conn}){
       <Stat 
         label="March" 
         value={fh(mar.hours)} 
-        sub={`12h/week (${mar.variance>=0?"+":"""}${fh(mar.variance)})`} 
+        sub={`12h/week (${mar.variance>=0?"+":""}${fh(mar.variance)})`} 
         bg="#fef2f2" 
         bd="#fecaca" 
         icon="cal"
-      />
-      <Stat 
-        label="Cumulative Balance" 
-        value={cur.cumulative>=0?`+${fh(cur.cumulative)}`:fh(cur.cumulative)} 
-        sub={cur.cumulative>=0?"Extra hours":"Hours deficit"} 
-        bg={cumulativeColor} 
-        bd={cumulativeBorder} 
-        icon="bar"
       />
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:24}}>
@@ -361,6 +341,7 @@ function Dash({entries,conn}){
     <BarChart data={wd} target={cur.target}/>
   </div>);
 }
+
 // ── Time Log ─────────────────────────────────────────────────────────────────
 function TLog({entries,onDel,conn,loading}){
   const[exp,setExp]=useState(null);
@@ -468,7 +449,6 @@ function TLog({entries,onDel,conn,loading}){
 
 // ── Clock In/Out ─────────────────────────────────────────────────────────────
 function CIO({entries,onCI,onCO,onMA,conn}){
-  // Load saved session from localStorage
   function loadSession(){
     try{
       const s=localStorage.getItem("hs_active_session");
@@ -478,7 +458,6 @@ function CIO({entries,onCI,onCO,onMA,conn}){
     }
   }
   
-  // Save session to localStorage
   function saveSession(session){
     try{
       if(session){
@@ -492,7 +471,6 @@ function CIO({entries,onCI,onCO,onMA,conn}){
   const[on,setOn]=useState(false),[ses,setSes]=useState(null),[task,setTask]=useState(""),[el,setEl]=useState("00:00:00");
   const[man,setMan]=useState(false),[mD,setMD]=useState(amsD()),[mI,setMI]=useState("09:00"),[mO,setMO]=useState("17:00"),[mT,setMT]=useState(""),[sav,setSav]=useState(false);
 
-  // Load saved session on mount
   useEffect(()=>{
     const saved=loadSession();
     if(saved){
@@ -502,7 +480,6 @@ function CIO({entries,onCI,onCO,onMA,conn}){
     }
   },[]);
 
-  // Save session whenever it changes
   useEffect(()=>{
     if(on&&ses){
       saveSession({...ses,task});
@@ -522,7 +499,6 @@ function CIO({entries,onCI,onCO,onMA,conn}){
   },[on,ses]);
 
   async function doCI(){
-    // Check if there's already an active session
     const existing=loadSession();
     if(existing){
       alert("You already have an active timer running!");
@@ -650,7 +626,6 @@ function App(){
   const[v,setV]=useState("dashboard"),[entries,setEntries]=useState(DEMO),[conn,setConn]=useState(false),[ld,setLd]=useState(false),[cs,setCs]=useState(null),[cfg,setCfgState]=useState(loadCfg),[cl,setCl]=useState(null);
   const setCfg=saveCfg;
 
-  // Connect on load & auto-refresh every 60s
   useEffect(()=>{
     if(!cfg.apiToken||!cfg.baseId)return;
     const c=makeClient(cfg.apiToken,cfg.baseId);setCl(c);setLd(true);
